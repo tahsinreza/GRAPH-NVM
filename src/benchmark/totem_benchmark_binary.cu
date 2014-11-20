@@ -22,7 +22,7 @@ const benchmark_attr_t BENCHMARKS[] = {
     benchmark_bfs,
     "BFS",
     sizeof(cost_t),
-    true,
+    false,//true,
     1,
     MSG_SIZE_ZERO,
     NULL,
@@ -149,8 +149,19 @@ PRIVATE vid_t get_random_src(graph_t* graph) {
  * Runs BFS benchmark according to Graph500 specification
  */
 PRIVATE void benchmark_bfs(graph_t* graph, void* cost, totem_attr_t* attr) {
-  CALL_SAFE(bfs_hybrid(get_random_src(graph),
-    reinterpret_cast<cost_t*>(cost)));
+  //CALL_SAFE(bfs_hybrid(get_random_src(graph),
+    //reinterpret_cast<cost_t*>(cost)));
+  if (options->platform == PLATFORM_CPU) {
+    CALL_SAFE(bfs_cpu(graph, get_random_src(graph), reinterpret_cast<cost_t*>(cost)));
+  } else if (options->platform == PLATFORM_GPU && options->gpu_count == 1) {
+     //CALL_SAFE(clustering_coefficient_sorted_neighbours_gpu(
+              //graph, reinterpret_cast<weight_t**>(&coefficients)));
+     // Not implemented
+     assert(false);
+  } else {
+      assert(false);
+  }
+
 }
 
 /**

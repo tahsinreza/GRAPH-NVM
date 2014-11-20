@@ -14,6 +14,12 @@
 // totem includes
 #include "totem_alg.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
 /**
  * This structure is used by the virtual warp-based implementation. It stores a
  * batch of work. It is allocated on shared memory and is processed by a single
@@ -295,6 +301,79 @@ error_t bfs_cpu(graph_t* graph, vid_t source_id, cost_t* cost) {
   error_t rc = check_special_cases(graph, source_id, cost, &finished);
   if (finished) return rc;
 
+  // Create mmapped edge array
+  
+  //vid_t* edges = graph->edges;
+
+  char* mmap_edges_file_path = "/local/treza/mmapped_edge_array";
+  eid_t mmap_edge_count = graph->edge_count;
+  size_t mmap_edges_file_size = mmap_edge_count * sizeof(eid_t); 
+  if (mmap_edges_file_size > 0)    
+    printf("\nFile size: %llu\n", mmap_edges_file_size); 
+  else exit(EXIT_FAILURE); 
+ 
+  // mmap write
+  int fd  = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR/*(mode_t)0600*/);
+  if (fd == -1) {
+    perror("Error opening file for writing");
+    exit(EXIT_FAILURE);
+  }
+
+  int result = lseek(fd, mmap_edges_file_size + 1, SEEK_SET);
+  if (result == -1) {
+    close(fd);
+    perror("Error calling lseek() to 'stretch' the file");
+    exit(EXIT_FAILURE);
+  }
+
+  result = write(fd, "", 1);
+  if (result != 1) {
+    close(fd);
+    perror("Error writing last byte of the file");
+    exit(EXIT_FAILURE);
+  }
+
+  int* map = (int* )mmap(0, mmap_edges_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    close(fd);
+    perror("Error mmapping the file");
+    exit(EXIT_FAILURE);
+  }
+
+  for (eid_t i = 0; i < mmap_edge_count; i++) {
+    map[i] = graph->edges[i];
+  }
+
+  if (munmap(map, mmap_edges_file_size) == -1) {
+    perror("Error un-mmapping the file");
+  }
+ 
+  close(fd);
+
+  // mmap read
+  fd = open(mmap_edges_file_path, O_RDONLY);
+  if (fd == -1) {
+    perror("Error opening file for reading");
+    exit(EXIT_FAILURE);
+  }
+
+  map = (int* )mmap(0, mmap_edges_file_size, PROT_READ, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    close(fd);
+    perror("Error mmapping the file");
+    exit(EXIT_FAILURE);
+  }
+
+  //for (uint64_t i = 0; i < mmap_edge_count; i++) {
+    //printf("%d: %d\n", i, map[i]);
+  //}
+
+  //if (munmap(map, mmap_edges_file_size) == -1) {
+  //  perror("Error un-mmapping the file");
+  //}
+
+  //close(fd);
+
   bitmap_t visited = initialize_cpu(graph, source_id, cost);
 
   finished = false;
@@ -333,7 +412,8 @@ error_t bfs_cpu(graph_t* graph, vid_t source_id, cost_t* cost) {
         if (cost[vertex_id] != level) continue;
         for (eid_t i = graph->vertices[vertex_id];
              i < graph->vertices[vertex_id + 1]; i++) {
-          const vid_t neighbor_id = graph->edges[i];
+          //const vid_t neighbor_id = graph->edges[i];
+          const vid_t neighbor_id = (vid_t)map[i]; //edges[i]; 
           if (!bitmap_is_set(visited, neighbor_id)) {
             if (bitmap_set_cpu(visited, neighbor_id)) {
               finished = false;
@@ -346,6 +426,17 @@ error_t bfs_cpu(graph_t* graph, vid_t source_id, cost_t* cost) {
     }
   }  // omp parallel
   bitmap_finalize_cpu(visited);
+
+  if (munmap(map, mmap_edges_file_size) == -1) {
+    perror("Error un-mmapping the file");
+  }
+
+  close(fd);
+
+  //for (int i = 0; i < graph->vertex_count; i++) {
+  //  printf("\n%u", cost[i]);
+  //}
+
   return SUCCESS;
 }
 
