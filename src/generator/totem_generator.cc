@@ -14,6 +14,13 @@
 #include "totem_graph.h"
 #include "totem_generator.h"
 
+// nvm includes
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
 // The maximum log of the number of vertices.
 const int kMaxVertexScale = sizeof(vid_t) * 8;
 
@@ -101,19 +108,60 @@ PRIVATE void edgelist_to_graph(
 
   // Fourth, setup the graph's data structure.
   graph_t* graph;
-  graph_allocate(vertex_count, edge_count, directed, weighted,
+  graph_allocate(vertex_count, 1/*edge_count*/, directed, weighted,
                  false /* No values associated with the vertices */ , &graph);
   graph->vertices[0] = 0;
   for (vid_t i = 1; i <= vertex_count; i++) {
     graph->vertices[i] = graph->vertices[i - 1] + degree[i - 1];
   }
 
+  // nvm
+  char* mmap_edges_file_path = "/local/treza/empty_edges_graph_generator_mmapped_edge_array";
+  eid_t mmap_edge_count = edge_count; 
+  size_t mmap_edges_file_size = mmap_edge_count * sizeof(eid_t); 
+  if (mmap_edges_file_size > 0) {
+    printf("\nEdge count: %llu\n", edge_count);
+    printf("\nFile size: %llu\n", mmap_edges_file_size);
+  } else exit(EXIT_FAILURE);  
+  
+  // mmap write
+  //int fd = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);        
+  int fd = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    perror("Error opening file for writing");
+    exit(EXIT_FAILURE);
+  }
+   
+  int result = lseek(fd, mmap_edges_file_size + 1, SEEK_SET);
+  if (result == -1) {
+    close(fd);
+    perror("Error calling lseek() to 'stretch' the file");
+    exit(EXIT_FAILURE);
+  }  
+
+  result = write(fd, "", 1);
+  if (result != 1) {
+    close(fd);
+    perror("Error writing last byte of the file");
+    exit(EXIT_FAILURE);
+  }
+
+  int* map = (int* )mmap(0, mmap_edges_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    close(fd);
+    perror("Error mmapping the file");
+    exit(EXIT_FAILURE);
+  }
+ 
+  // nvm
+  
   for (eid_t i = 0; i < edge_count; i++) {
     vid_t u = src[i];
     vid_t v = dst[i];
     eid_t pos = degree[u]--;
     eid_t eid = graph->vertices[u] + pos - 1;
-    graph->edges[eid] = v;
+    //graph->edges[eid] = v;
+    map[eid] = v; // nvm // mmap write
     if (weighted) {
       // Assign random weights to the edges. For no particular reason, the
       // weights are chosen from the range [0, vertex_count].
@@ -122,6 +170,20 @@ PRIVATE void edgelist_to_graph(
   }
   free(degree);
   *graph_ret = graph;
+
+  // nvm
+  // mmap write
+  if (munmap(map, mmap_edges_file_size) == -1) {
+    perror("Error un-mmapping the file");
+  } 
+
+  close(fd);
+
+  if (mmap_edges_file_size > 0) {
+    printf("\nEdge count: %llu\n", edge_count);
+    printf("\nFile size: %llu\n", mmap_edges_file_size);
+  } else exit(EXIT_FAILURE); 
+  // nvm 
 }
 
 PRIVATE void graph_to_edgelist(const graph_t* graph, vid_t** src, vid_t** dst) {

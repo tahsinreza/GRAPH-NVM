@@ -305,15 +305,25 @@ error_t bfs_cpu(graph_t* graph, vid_t source_id, cost_t* cost) {
   
   //vid_t* edges = graph->edges;
 
-  char* mmap_edges_file_path = "/local/treza/mmapped_edge_array";
-  eid_t mmap_edge_count = graph->edge_count;
+  char* mmap_edges_file_path = "/local/treza/empty_edges_graph_generator_mmapped_edge_array";
+
+  eid_t edge_count_20 = 16777184;
+  eid_t edge_count_21 = 33554400;
+  eid_t edge_count_25 = 536870880;
+
+  eid_t mmap_edge_count = edge_count_20; //graph->edge_count;
   size_t mmap_edges_file_size = mmap_edge_count * sizeof(eid_t); 
   if (mmap_edges_file_size > 0)    
     printf("\nFile size: %llu\n", mmap_edges_file_size); 
   else exit(EXIT_FAILURE); 
+
+  int fd = -1;
+  int* map = NULL; 
  
   // mmap write
-  int fd  = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR/*(mode_t)0600*/);
+//  int fd  = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR/*(mode_t)0600*/);
+/*  int fd  = open(mmap_edges_file_path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+
   if (fd == -1) {
     perror("Error opening file for writing");
     exit(EXIT_FAILURE);
@@ -349,7 +359,7 @@ error_t bfs_cpu(graph_t* graph, vid_t source_id, cost_t* cost) {
   }
  
   close(fd);
-
+*/
   // mmap read
   fd = open(mmap_edges_file_path, O_RDONLY);
   if (fd == -1) {
